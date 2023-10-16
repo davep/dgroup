@@ -1,0 +1,352 @@
+<h2>Background On DGROUP</h2>
+<p>
+  (Portions of this section are taken, with the kind permission of
+  Dark Black Software, from the MrDebug Norton Guide)
+</p>
+<p>
+  DGROUP is a 64K chunk of memory that, for a Clipper program, can be
+  broken down into five distinct sections, each serving a specific
+  purpose. DGROUP can be easily described as a 64K block of memory that is
+  used by Clipper as a common area of memory that Cliper and third party
+  products can rely on to find various items of information. There are
+  five main parts to DGROUP:
+</p>
+<ol>
+  <li>
+    <a id="MemVarTable"></a>The MemVar table (Dynamic)
+    <p>
+      This is used to store Clipper STATIC variables and ITEMs (declared
+      through the ITEM API) with their contents if the contents and
+      variable/ITEM definition can be held within 14 bytes, otherwise the
+      variable/ITEM definition is held along with a pointer to a Virtual
+      Memory segment where the variable/ITEM contents are held.
+    </p>
+  </li>
+  <li>DS Available (Dynamic)
+    <p>
+      This is the amount of free memory available within the DGROUP. This
+      amount can be seen from //INFO as DS AVAIL or from the Memory/Info
+      window. This will be reduced during the execution of the program as
+      the Eval Stack and the Memvar table may both 'grow' into this area.
+    </p>
+  </li>
+  <li>Eval Stack (Dynamic)
+    <p>
+      This is where Clipper LOCAL variables are held (if the variable
+      definition and contents take up 14 bytes or less), otherwise a pointer
+      is stored to a Virtual memory segment that contains the variable
+      contents.
+    </p>
+  </li>
+  <li>CPU Stack (Fixed)
+    <p>
+      The CPU stack is used to store the function return addresses each time a
+      new function is called, as well as local 'C' variables.
+    </p>
+    <p>
+      The size of the CPU stack is set when you link your program. It
+      depends upon the linker that you are using and linker specific
+      commands that you have in the link script that might increase or
+      reduce the stack
+    </p>
+  </li>
+  <li><a id="FixedCAndASM"></a>Fixed C and ASM Data (Fixed)
+    <p>
+      This area is used by other third party libraries and other languages
+      that do not use their own data segments and use the default data
+      segment (otherwise known to us Clipperites as DGROUP) to store fixed
+      pieces of text and global variables used by other languages
+    </p>
+    <p>
+      For example, inside Clipper, the un-recoverable error messages are
+      stored within this section of the default data segment (DGROUP).
+    </p>
+  </li>
+</ol>
+<p>
+  As you can see from the above, the DGROUP area is pretty important to the
+  smooth running of your Clipper application, and a lack of DGROUP can cause
+  your software to fall over with a number of internal errors.
+</p>
+<p>
+  In an effort to make sure this does not happen you should try to reduce
+  the impact your code has on DGROUP. Many 3rd party libraries use large
+  ammounts of DGROUP (in my experience they can bump up the <a
+  href="#FixedCAndASM">fixed C and ASM data</a> usage by quite a bit. If you
+  need to use a number of 3rd party libraries this can become quite a
+  problem.
+</p>
+<p>
+  However, given that your chances of changing the usage of 3rd party
+  libraries are pretty slim, the only chance you have of making a difference
+  is by improving your own code to reduce its DGROUP usage.
+</p>
+
+<h2>What Can Be Done?</h2>
+<p>
+  If you write nothing but pure Clipper code, you still have the
+  ability to reduce your DGROUP usage. The main area you can
+  address is your use of STATIC variables. STATIC variables are,
+  without a doubt, a good thing, but, they come with a price.
+</p>
+<p>
+  Unlike the other variable types, each STATIC variable requires a fixed (14
+  byte) entry in the <a href="#MemVarTable">the MemVar table</a>. On the
+  surface this may not seem like a big deal. A STATIC only needs 14 bytes in
+  DGROUP, what does it matter? To see how this matters, let's take the
+  GETSYS.PRG code you can find in the SOURCE\SYS directory of your copy of
+  Clipper as an example.
+</p>
+<p>
+  Close to the top of the source you will find the following code:
+</p>
+<pre><code><strong>  //
+  // State variables for active READ
+  //</strong>
+  STATIC sbFormat
+  STATIC slUpdated := .F.
+  STATIC slKillRead
+  STATIC slBumpTop
+  STATIC slBumpBot
+  STATIC snLastExitState
+  STATIC snLastPos
+  STATIC soActiveGet
+  STATIC scReadProcName
+  STATIC snReadProcLine
+</code></pre>
+<p>
+  As you can see, there are 10 STATIC variables, each using 14
+  bytes in the <a href="#MemVarTable">MemVar Table</a>. With
+  a simple little trick we can reduce that 140 bytes of usage
+  down to 14 bytes. Watch:
+</p>
+<pre><code><strong>  // Hold all the statics in one static.</strong>
+
+  Static _aSysStuff := { NIL, .F., NIL, NIL, NIL, NIL,;
+                         NIL, NIL, NIL, NIL }
+
+  <strong>// Translated static variable names.</strong>
+
+  #xtranslate sbFormat        =&gt; _aSysStuff\[ 01 \]
+  #xtranslate slUpdated       =&gt; _aSysStuff\[ 02 \]
+  #xtranslate slKillRead      =&gt; _aSysStuff\[ 03 \]
+  #xtranslate slBumpTop       =&gt; _aSysStuff\[ 04 \]
+  #xtranslate slBumpBot       =&gt; _aSysStuff\[ 05 \]
+  #xtranslate snLastExitState =&gt; _aSysStuff\[ 06 \]
+  #xtranslate snLastPos       =&gt; _aSysStuff\[ 07 \]
+  #xtranslate soActiveGet     =&gt; _aSysStuff\[ 08 \]
+  #xtranslate scReadProcName  =&gt; _aSysStuff\[ 09 \]
+  #xtranslate snReadProcLine  =&gt; _aSysStuff\[ 10 \]
+</code></pre>
+<p>
+  With that simple little trick you will have reduced the DGROUP usage from
+  140 bytes to just 14 bytes.
+</p>
+<p>
+  If you have lots of code of your own that has a large number of file wide
+  STATICs in a single file you can make quite a difference.
+</p>
+<p>
+  If you write your own C functions, then it's a wise move to take a look at
+  the compiler options at your disposal, as some of these can drastically
+  reduce the impact on DGROUP.
+</p>
+<p>
+  For example, take the following piece of code:
+</p>
+<pre><code>  #include &lt;extend.api&gt;
+
+  CLIPPER YesNo( void )              <strong>// Return yes or no string</strong>
+  {
+      if ( _parl(1) )                <strong>// .T. passed to function?</strong>
+      {
+          _retc( "Yes" );            <strong>// Yes, so return "Yes"</strong>
+      }
+      else
+      {
+          _retc( "No" );             <strong>// No, so return "No"</strong>
+      }
+  }
+</code></pre>
+<p>
+  Simple enough, but already we've just used 7 (or 8) bytes of DGROUP
+  without thinking! Why? you ask. Answer: It's the strings. By default, C
+  compilers will put constants (which means strings, doubles, floats and
+  some arrays) into DGROUP. And when I say '7 (or 8)', it's because some
+  compilers will align data on a WORD boundary as default, and you can
+  usually expect the DGROUP usage to be a tad more than you thought.
+</p>
+<p>
+  You can change this by looking for a compiler option to reverse this
+  default. For example, with the Microsoft C compilers, there is the /Gt
+  switch and for Borland C compilers there is the -Ff switch. Given a number
+  of 1, it will automatically put any constants larger than 1 length into a
+  FAR segment, and out of DGROUP! This means, that no matter how much data
+  is used by your C functions for strings and things, it won't make a
+  difference to DGROUP.
+</p>
+<p>
+  With assembler code, we use the same principles. Don't use _DATA, _BSS,
+  CONST or DGROUP for data storage if you can possibly help it.
+</p>
+<p>
+  So, if you have a module like this:
+</p>
+<pre><code>    _DATA           SEGMENT WORD PUBLIC 'DATA'
+            cYes    DB      'Yes', 0
+            cNo     DB      'No', 0
+    _DATA           ENDS
+
+    DGROUP  GROUP   _DATA
+
+    YESNO_TEXT      SEGMENT WORD PUBLIC 'CODE'
+
+            ASSUME cs:YESNO_TEXT, ds:DGROUP
+
+    YESNO           PROC    FAR
+                    PUSH    bp
+                    MOV     bp, sp
+
+                    MOV     ax, 1
+                    PUSH    ax
+                    CALL    __parl
+                    ADD     sp, 2
+
+                    OR      ax, ax
+                    JZ      ZeroSoItsFalse
+
+                    MOV     ax, OFFSET cYes
+                    JMP     SHORT ReturnString
+
+    ZeroSoItsFalse: MOV     ax, OFFSET cNo
+
+    ReturnString:
+                    PUSH    ax
+                    PUSH    ds
+                    CALL    __retc
+                    ADD     sp, 4
+
+                    POP     bp
+                    RETF
+    YESNO           ENDP
+
+    YESNO_TEXT      ENDS
+                    END
+</code></pre>
+<p>
+  You've again used 7 (or 8) bytes of DGROUP without thinking, so in this
+  case you would have to alter the segments and anything that used the data
+  in them so that DGROUP can once again be saved:
+</p>
+<pre><code>    <strong>YESNO_DATA</strong>      SEGMENT WORD PUBLIC <strong>'FAR_DATA'</strong>
+            cYes    DB      'Yes', 0
+            cNo     DB      'No', 0
+    <strong>YESNO_DATA</strong>      ENDS
+
+    YESNO_TEXT      SEGMENT WORD PUBLIC 'CODE'
+            ASSUME cs:YESNO_TEXT, ds:NOTHING
+
+    YESNO           PROC    FAR
+                    PUSH    bp
+                    MOV     bp, sp
+
+                    MOV     ax, 1
+                    PUSH    ax
+                    CALL    __parl
+                    ADD     sp, 2
+
+                    OR      ax, ax
+                    JZ      ZeroSoItsFalse
+
+                    MOV     ax, OFFSET cYes
+                    JMP     SHORT ReturnString
+
+    ZeroSoItsFalse: MOV     ax, OFFSET cNo
+
+    ReturnString:   PUSH    ax
+                    <strong>PUSH    YESNO_DATA</strong>
+                    CALL    __retc
+                    ADD     sp, 4
+
+                    POP     bp
+                    RETF
+    YESNO           ENDP
+
+    YESNO_TEXT      ENDS
+                    END
+</code></pre>
+<p>
+  As you can see, if your application is tight on DGROUP, with the
+  source to hand and a little bit of work you can free up some of
+  that usage. Let's just hope you have the source code for the worst
+  offending code in your application.
+</p>
+
+
+<h2>Using DGSCAN To Find DGROUP Usage</h2>
+<p>
+  Back when I first became aware of this "problem" I started to work on my
+  own library code and managed to reduce some of the DGROUP usage. However,
+  working through all that code was getting to be pretty boring. That's when
+  I decided to write DGSCAN. What I wanted was a tool that could scan OBJ
+  and LIB files and find anything that might be taking up precious DGROUP
+  space.
+</p>
+<p>
+  If you want to get and try out DGSCAN then download the <a
+  href="../dgscn300.zip">ZIP file</a> and unzip it. Done? Good.
+</p>
+<p>
+  Ok, let's take a simple example of using DGSCAN. Look at the following
+  code:
+</p>
+<pre><code>  Static xVar1
+  Static xVar2
+  Static xVar3
+  Static xVar4
+
+  Function Main()
+
+     ? "I'm eating up DGROUP"
+
+  Return( NIL )
+</code></pre>
+<p>
+  Compile it into an OBJ and then run DGSCAN over it:
+</p>
+<pre><code>  F:\DGTEST&gt;dgscan <a href="http://www.rfc-editor.org/rfc/rfc3092.txt">foo</a>.obj
+
+  DgScan v3.00 - DGROUP Usage Scanner
+  By Dave Pearson
+
+  File-------- Module--------------------------- Segment----------- Bytes-----
+  FOO.OBJ      FOO                               STATICS$                   56
+  FOO.OBJ      *** Total ***                                                56
+</code></pre>
+<p>
+  As you can see, DGSCAN has detected 56 bytes of possible DGROUP usage.
+  This is because we have 4 STATIC variables, each with a 14 byte
+  impact. If you applied the "array trick" we spoke about
+  earlier you would see the usage reduced to 14 bytes.
+</p>
+<p>
+  To generate a report for all your OBJ files just do:
+</p>
+<pre><code>  F:\DGTEST&gt;dgscan *.obj</code></pre>
+<p>
+  It's as simple as that, and the same goes for LIB files.
+</p>
+<p>
+  I won't say much more about DGSCAN, everything you need to know is
+  covered by the file DGSCAN.TXT found in the DGSCAN archive. However,
+  if you do have problems with the utility please feel free to
+  <a href="mailto:davep&#64;davep.org">mail me</a> and I'll
+  try to help you out.
+</p>
+<hr />
+<p>
+  Last updated 5th March, 1997
+  <br />
+  <a href="http://www.davep.org/">Dave Pearson</a>
+  <a href="mailto:davep&#64;davep.org">&lt;davep@davep.org&gt;</a>
+</p>
